@@ -47,15 +47,23 @@ fn main(){
     config.mtu(1500);
     config.up();
 
+    let my_addr = Ipv4Addr::new(192, 168, 1, 101);
+    let their_addr = Ipv4Addr::new(192, 168, 1, 135);
+    let phony_addr = Ipv4Addr::new(10, 1, 1, 4);
+
     let mut dev = tun::create(&config).unwrap();
 
-    Command::new("iptables").args(&["-t", "nat", "-A", "OUTPUT", "-d", "192.168.1.134", "-j", "DNAT", "--to-destination", "10.1.1.4"]).output().expect("oops");
+    Command::new("iptables").args(&["-t", "nat", "-A", "OUTPUT", "-d", "192.168.1.135", "-j", "DNAT", "--to-destination", "10.1.1.4"]).output().expect("oops");
+    //Command::new("iptables").args(&["-t", "nat", "-A", "PREROUTNG", "-d", "10.1.1.4", "-j", "DNAT", "--to-destination", "192.168.1.101"]).output().expect("oops");
+    //Command::new("iptables").args(&["-t", "raw", "-A", "OUTPUT", "-d", "172.27.15.108", "-j", "NOTRACK"]);
+    Command::new("iptables").args(&["-t", "nat", "-A", "POSTROUTING", "-s", "10.1.1.4", "-j", "SNAT", "--to-source", "192.168.1.101"]).output().expect("oops");
 
     let running = Arc::new(AtomicBool::new(true));
     let r = Arc::clone(&running);
     handle_sigint(r);
 
     let mut buffer = [0u8; 1504];
+    let mut outbound = true;
     while running.load(Ordering::SeqCst) {
         let n = dev.read(&mut buffer).unwrap();
         if n <= 0{
@@ -70,17 +78,34 @@ fn main(){
             for &byte in packet.packet(){
                 print!("{:02X} ", byte);
             }
+            println!("\nPacket {:?}", packet);
             println!("------------------------------");
+            
+            if packet.get_source() == my_addr { // outbound
+                packet.set_destination(their_addr.clone());
+                packet.set_source(phony_addr.clone());
+                outbound = true;
+            } else if packet.get_source() == their_addr { // inbound
+                packet.set_source(phony_addr.clone());
+                packet.set_destination(my_addr.clone());
+                outbound = false;
+            } else { // what?
+                panic!("what the fuck?");
+            }
 
-            packet.set_destination(Ipv4Addr::new(192,168,1,135));
             let header_checksum = pnet::packet::ipv4::checksum(&packet.to_immutable());
             packet.set_checksum(header_checksum);
             println!("header checksum {}", header_checksum);
             println!("========================================");
 
             if let Some(mut tcp) = MutableTcpPacket::new(&mut packet.payload().to_owned()){
-                let checksum = pnet::packet::tcp::ipv4_checksum(&tcp.to_immutable(), &Ipv4Addr::new(192,168,1,101), &Ipv4Addr::new(192,168,1,135));
-                tcp.set_checksum(checksum);
+                if outbound {
+                    let checksum = pnet::packet::tcp::ipv4_checksum(&tcp.to_immutable(), &phony_addr, &their_addr);
+                    tcp.set_checksum(checksum);
+                } else {
+                    let checksum = pnet::packet::tcp::ipv4_checksum(&tcp.to_immutable(), &phony_addr, &my_addr);
+                    tcp.set_checksum(checksum);
+                }
                 println!("Packet {:?}", packet);
                 println!("n {}", n);
                 println!("total length {}", packet.get_total_length());
@@ -100,10 +125,15 @@ fn main(){
             }
             println!("------------------------------");
 
-            dev.write(&packet.packet()).unwrap();
+            let n = dev.write(&packet.packet()).unwrap();
+            println!("wrote {} bytes.", n);
         }
     }
 
-    Command::new("iptables").args(&["-t", "nat", "-D", "OUTPUT", "-d", "192.168.1.134", "-j", "DNAT", "--to-destination", "10.1.1.4"]).output().expect("oops");
+    Command::new("iptables").args(&["-t", "nat", "-D", "POSTROUTING", "-s", "10.1.1.4", "-j", "SNAT", "--to-source", "192.168.1.101"]).output().expect("oops");
+    //Command::new("iptables").args(&["-t", "raw", "-D", "OUTPUT", "-d", "172.27.15.108", "-j", "NOTRACK"]);
+    //Command::new("iptables").args(&["-t", "nat", "-D", "PREROUTNG", "-d", "10.1.1.4", "-j", "DNAT", "--to-destination", "192.168.1.101"]).output().expect("oops");
+    Command::new("iptables").args(&["-t", "nat", "-D", "OUTPUT", "-d", "192.168.1.135", "-j", "DNAT", "--to-destination", "10.1.1.4"]).output().expect("oops");
+    println!("iptables out");
 }
 
