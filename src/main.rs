@@ -56,7 +56,7 @@ fn run_command(config_path: String) -> Result<(), String>{
     let r = Arc::clone(&running);
     handle_signals(r);
 
-    serve_forever(config, pool, dev, running)?;
+    serve_forever(&config, pool, dev, running)?;
 
     stop_and_clean_up_device(config, dev);
 }

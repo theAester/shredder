@@ -5,7 +5,6 @@ extern crate tun;
 extern crate pnet;
 extern crate serde;
 extern crate signal_hook;
-extern crate mio;
 
 use std::env;
 use std::thread;
