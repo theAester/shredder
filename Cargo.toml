@@ -11,3 +11,6 @@ config="0.14.0"
 tun="0.6.1"
 pnet="0.34.0"
 signal-hook="0.3.17"
+serde="1.0.190"
+#threadpool="*"
+mio={version="0.8.11", features=["os-poll"]}

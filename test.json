@@ -1,0 +1,17 @@
+{
+	"num_threads": 1,
+	"address": "10.1.1.1",
+	"subnet_mask": "255.255.255.0",
+	"origin": "192.168.1.101",
+	"applications": [
+		{
+			"name": "test0",
+			"dest": "192.168.1.135"
+		},
+		{
+			"name": "test1",
+			"dest": "192.168.1.136",
+			"ports": [80, 443]
+		}
+	]
+}
